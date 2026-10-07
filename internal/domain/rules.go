@@ -3,11 +3,9 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -52,60 +50,6 @@ func LeaseFingerprint(planID string, input LeaseInput) string {
 		input.MaxNodes,
 	)
 	sum := sha256.Sum256([]byte(payload))
-	return hex.EncodeToString(sum[:])
-}
-
-type LeasePayload struct {
-	PlanID       string `json:"plan_id"`
-	Region       string `json:"region"`
-	LeaseSeconds int    `json:"lease_seconds"`
-	MaxNodes     int    `json:"max_nodes"`
-}
-
-func (p LeasePayload) canonical() string {
-	return fmt.Sprintf(
-		"%s|%s|%d|%d",
-		p.PlanID,
-		p.Region,
-		p.LeaseSeconds,
-		p.MaxNodes,
-	)
-}
-
-func LeasePayloadIdentity(planID string, input LeaseInput) string {
-	payload := LeasePayload{
-		PlanID:       strings.TrimSpace(planID),
-		Region:       strings.TrimSpace(strings.ToLower(input.Region)),
-		LeaseSeconds: input.LeaseSeconds,
-		MaxNodes:     input.MaxNodes,
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		encoded = []byte(payload.canonical())
-	}
-	sum := sha256.Sum256(encoded)
-	return hex.EncodeToString(sum[:])
-}
-
-type AssessmentPayload struct {
-	PlanID     string `json:"plan_id"`
-	RevisionID string `json:"revision_id"`
-}
-
-func (p AssessmentPayload) canonical() string {
-	return fmt.Sprintf("%s|%s", p.PlanID, p.RevisionID)
-}
-
-func AssessmentPayloadIdentity(planID string, revisionID string) string {
-	payload := AssessmentPayload{
-		PlanID:     strings.TrimSpace(planID),
-		RevisionID: strings.TrimSpace(revisionID),
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		encoded = []byte(payload.canonical())
-	}
-	sum := sha256.Sum256(encoded)
 	return hex.EncodeToString(sum[:])
 }
 

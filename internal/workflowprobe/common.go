@@ -61,11 +61,22 @@ func allocate(
 	region string,
 	maxNodes int,
 ) (domain.LeaseGroup, error) {
+	return allocateLease(harness, planID, requestKey, region, maxNodes, 600)
+}
+
+func allocateLease(
+	harness *harness,
+	planID string,
+	requestKey string,
+	region string,
+	maxNodes int,
+	leaseSeconds int,
+) (domain.LeaseGroup, error) {
 	var group domain.LeaseGroup
 	err := harness.call(http.MethodPatch, "/v1/plans/"+planID+"/leases", domain.LeaseInput{
 		RequestKey:   requestKey,
 		Region:       region,
-		LeaseSeconds: 600,
+		LeaseSeconds: leaseSeconds,
 		MaxNodes:     maxNodes,
 	}, &group)
 	return group, err

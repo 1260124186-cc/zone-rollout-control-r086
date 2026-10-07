@@ -44,6 +44,13 @@ func runConsistencyAssessment() error {
 	if consistent.Verdict != domain.VerdictConsistent || consistent.ProbeCount != 2 {
 		return ensure(false, "consistent assessment did not include both probes")
 	}
+	var planAfterFirst domain.RolloutPlan
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID, nil, &planAfterFirst); err != nil {
+		return err
+	}
+	if planAfterFirst.LatestAssessmentID != consistent.ID {
+		return ensure(false, "plan summary was not updated after the first assessment")
+	}
 	var replay domain.RolloutAssessment
 	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
 		RequestKey: "assess-request-0001",
@@ -53,11 +60,63 @@ func runConsistencyAssessment() error {
 	if replay.ID != consistent.ID {
 		return ensure(false, "assessment replay returned another result")
 	}
+	var planAfterReplay domain.RolloutPlan
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID, nil, &planAfterReplay); err != nil {
+		return err
+	}
+	if planAfterReplay.Version != planAfterFirst.Version || planAfterReplay.LatestAssessmentID != consistent.ID {
+		return ensure(false, "same-key assessment replay must not produce a new conclusion")
+	}
+
+	// A different request key is an independent evaluation: identical plan
+	// state must still create a new assessment and advance the plan summary.
+	var second domain.RolloutAssessment
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
+		RequestKey: "assess-request-0002",
+	}, &second); err != nil {
+		return err
+	}
+	if second.ID == consistent.ID {
+		return ensure(false, "new assessment request key replayed the previous result")
+	}
+	if second.Verdict != domain.VerdictConsistent {
+		return ensure(false, "independent assessment produced a different verdict")
+	}
+	var planAfterSecond domain.RolloutPlan
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID, nil, &planAfterSecond); err != nil {
+		return err
+	}
+	if planAfterSecond.LatestAssessmentID != second.ID || planAfterSecond.Version <= planAfterFirst.Version {
+		return ensure(false, "new assessment did not update the plan summary and version")
+	}
+
+	// The distinction must survive a restart on the same snapshot.
+	if err := harness.restart(); err != nil {
+		return err
+	}
+	var replayed domain.RolloutAssessment
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
+		RequestKey: "assess-request-0001",
+	}, &replayed); err != nil {
+		return err
+	}
+	if replayed.ID != consistent.ID {
+		return ensure(false, "assessment replay changed after restart")
+	}
+	var third domain.RolloutAssessment
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
+		RequestKey: "assess-request-0003",
+	}, &third); err != nil {
+		return err
+	}
+	if third.ID == consistent.ID || third.ID == second.ID {
+		return ensure(false, "new assessment key after restart replayed an old result")
+	}
 	var latest domain.RolloutAssessment
 	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID+"/assessments/latest", nil, &latest); err != nil {
 		return err
 	}
-	if latest.ID != consistent.ID {
+	if latest.ID != third.ID {
 		return ensure(false, "latest assessment does not match")
 	}
 

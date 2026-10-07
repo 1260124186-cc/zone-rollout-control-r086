@@ -36,12 +36,20 @@ func newHarness() (*harness, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create temporary directory: %w", err)
 	}
+	return newHarnessAt(tempDir)
+}
+
+func newHarnessAt(tempDir string) (*harness, error) {
+	return newHarnessAtTime(tempDir, time.Date(2026, time.September, 25, 12, 0, 0, 0, time.UTC))
+}
+
+func newHarnessAtTime(tempDir string, now time.Time) (*harness, error) {
 	stateStore, err := store.Open(tempDir + "/state.json")
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
 		return nil, fmt.Errorf("open temporary store: %w", err)
 	}
-	clock := platform.NewManualClock(time.Date(2026, time.September, 25, 12, 0, 0, 0, time.UTC))
+	clock := platform.NewManualClock(now)
 	ids := platform.CryptoIDGenerator{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	plans := plan.New(stateStore, clock, ids)
@@ -68,6 +76,27 @@ func newHarness() (*harness, error) {
 		listener: listener,
 		tempDir:  tempDir,
 	}, nil
+}
+
+// restart stops the current HTTP process and starts a fresh one backed by the
+// same snapshot file, mirroring a control-plane restart.
+func (h *harness) restart() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := h.server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown server: %w", err)
+	}
+	_ = h.listener.Close()
+	restarted, err := newHarnessAtTime(h.tempDir, h.clock.Now())
+	if err != nil {
+		return err
+	}
+	h.baseURL = restarted.baseURL
+	h.client = restarted.client
+	h.server = restarted.server
+	h.listener = restarted.listener
+	h.clock = restarted.clock
+	return nil
 }
 
 func (h *harness) close() {
