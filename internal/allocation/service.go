@@ -46,7 +46,6 @@ func (s *Service) Allocate(
 				"state":   plan.State,
 			})
 		}
-		payloadIdentity := domain.LeasePayloadIdentity(planID, input)
 		if existingID, exists := state.LeaseRequestKeys[requestIndex]; exists {
 			existing, found := state.LeaseGroups[existingID]
 			if !found {
@@ -79,16 +78,6 @@ func (s *Service) Allocate(
 				"plan_id": planID,
 				"region":  input.Region,
 			})
-		}
-		if existingID, exists := state.LeasePayloadIndex[payloadIdentity]; exists {
-			existing, found := state.LeaseGroups[existingID]
-			if !found {
-				return domain.NewError(domain.CodeStorageFailure, "lease payload index is inconsistent", map[string]any{
-					"lease_group_id": existingID,
-				})
-			}
-			group = existing
-			return nil
 		}
 		sort.Slice(candidates, func(i, j int) bool {
 			if candidates[i].Region != candidates[j].Region {
@@ -131,7 +120,6 @@ func (s *Service) Allocate(
 		}
 		state.LeaseGroups[group.ID] = group
 		state.LeaseRequestKeys[requestIndex] = group.ID
-		state.LeasePayloadIndex[payloadIdentity] = group.ID
 		store.AddAudit(state, s.ids, "lease_group", group.ID, "created", now, map[string]any{
 			"plan_id":     planID,
 			"lease_count": len(leaseIDs),

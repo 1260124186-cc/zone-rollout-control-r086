@@ -40,17 +40,6 @@ func (s *Service) Evaluate(
 				"state":   plan.State,
 			})
 		}
-		payloadIdentity := domain.AssessmentPayloadIdentity(planID, plan.LatestRevisionID)
-		if existingID, exists := state.AssessmentPayloadIndex[payloadIdentity]; exists {
-			existing, found := state.Assessments[existingID]
-			if !found {
-				return domain.NewError(domain.CodeStorageFailure, "assessment payload index is inconsistent", map[string]any{
-					"assessment_id": existingID,
-				})
-			}
-			result = existing
-			return nil
-		}
 		if existingID, exists := state.AssessmentRequestKeys[requestIndex]; exists {
 			existing, found := state.Assessments[existingID]
 			if !found {
@@ -87,7 +76,6 @@ func (s *Service) Evaluate(
 		result.RequestKey = input.RequestKey
 		state.Assessments[result.ID] = result
 		state.AssessmentRequestKeys[requestIndex] = result.ID
-		state.AssessmentPayloadIndex[payloadIdentity] = result.ID
 		plan.LatestAssessmentID = result.ID
 		plan.Version++
 		state.Plans[planID] = plan

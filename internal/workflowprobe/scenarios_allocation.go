@@ -48,5 +48,36 @@ func runNodeLeaseAllocation() error {
 	if released.State != domain.LeaseReleased {
 		return ensure(false, "lease release did not update state")
 	}
+	if err := harness.restart(); err != nil {
+		return err
+	}
+	replayedAfterRestart, err := allocate(harness, plan.ID, "lease-request-0001", "east", 2)
+	if err != nil {
+		return err
+	}
+	if replayedAfterRestart.ID != first.ID {
+		return ensure(false, "lease request replay after restart returned another group")
+	}
+	second, err := allocate(harness, plan.ID, "lease-request-0003", "east", 2)
+	if err != nil {
+		return err
+	}
+	if second.ID == first.ID {
+		return ensure(false, "new request key reused the previous lease group")
+	}
+	if len(second.LeaseIDs) != 1 || second.LeaseIDs[0] == first.LeaseIDs[0] {
+		return ensure(false, "new request key did not claim a fresh lease")
+	}
+	secondReplay, err := allocate(harness, plan.ID, "lease-request-0003", "east", 2)
+	if err != nil {
+		return err
+	}
+	if secondReplay.ID != second.ID {
+		return ensure(false, "second lease request replay returned another group")
+	}
+	_, err = allocate(harness, plan.ID, "lease-request-0003", "east", 1)
+	if err := expectFailure(err, http.StatusConflict, string(domain.CodeIdempotencyConflict)); err != nil {
+		return err
+	}
 	return nil
 }

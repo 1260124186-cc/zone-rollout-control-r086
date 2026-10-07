@@ -61,6 +61,48 @@ func runConsistencyAssessment() error {
 		return ensure(false, "latest assessment does not match")
 	}
 
+	var planBefore domain.RolloutPlan
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID, nil, &planBefore); err != nil {
+		return err
+	}
+	var followUp domain.RolloutAssessment
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
+		RequestKey: "assess-request-0002",
+	}, &followUp); err != nil {
+		return err
+	}
+	if followUp.ID == consistent.ID {
+		return ensure(false, "new request key reused the previous assessment")
+	}
+	var planAfter domain.RolloutPlan
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID, nil, &planAfter); err != nil {
+		return err
+	}
+	if planAfter.LatestAssessmentID != followUp.ID || planAfter.Version != planBefore.Version+1 {
+		return ensure(false, "new assessment did not advance the plan summary")
+	}
+	if err := harness.restart(); err != nil {
+		return err
+	}
+	var followUpReplay domain.RolloutAssessment
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
+		RequestKey: "assess-request-0002",
+	}, &followUpReplay); err != nil {
+		return err
+	}
+	if followUpReplay.ID != followUp.ID {
+		return ensure(false, "assessment replay after restart returned another result")
+	}
+	var firstReplay domain.RolloutAssessment
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/assessments", domain.AssessmentInput{
+		RequestKey: "assess-request-0001",
+	}, &firstReplay); err != nil {
+		return err
+	}
+	if firstReplay.ID != consistent.ID {
+		return ensure(false, "first assessment key did not return the original result")
+	}
+
 	reviewPlan, reviewRevision, err := createActivePlan(harness, "review.example", 4001, 1, 1, 20)
 	if err != nil {
 		return err
